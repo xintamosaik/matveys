@@ -1,4 +1,5 @@
 import sys
+import random
 
 import pygame
 
@@ -16,6 +17,41 @@ PLAYER_SIZE = 36
 BULLET_SIZE = 8
 SHOOT_COOLDOWN = 0.2
 MAX_HP = 5
+
+
+def generate_random_walls(arena: pygame.Rect) -> list[pygame.Rect]:
+    wall_count = random.randint(5, 8)
+    walls: list[pygame.Rect] = []
+
+    p1_safe = pygame.Rect(0, HEIGHT // 2 - 90, 230, 180)
+    p2_safe = pygame.Rect(WIDTH - 230, HEIGHT // 2 - 90, 230, 180)
+    center_lane = pygame.Rect(WIDTH // 2 - 90, HEIGHT // 2 - 40, 180, 80)
+
+    tries = 0
+    while len(walls) < wall_count and tries < 200:
+        tries += 1
+
+        if random.random() < 0.5:
+            w = random.randint(50, 90)
+            h = random.randint(120, 220)
+        else:
+            w = random.randint(120, 220)
+            h = random.randint(50, 90)
+
+        x = random.randint(40, arena.width - w - 40)
+        y = random.randint(40, arena.height - h - 40)
+        candidate = pygame.Rect(x, y, w, h)
+
+        if candidate.colliderect(p1_safe) or candidate.colliderect(p2_safe):
+            continue
+        if candidate.colliderect(center_lane):
+            continue
+        if any(candidate.colliderect(wall.inflate(18, 18)) for wall in walls):
+            continue
+
+        walls.append(candidate)
+
+    return walls
 
 
 def move_with_walls(rect: pygame.Rect, dx: int, dy: int, walls: list[pygame.Rect], bounds: pygame.Rect) -> None:
@@ -63,12 +99,7 @@ def main() -> None:
         },
     }
 
-    walls = [
-        pygame.Rect(WIDTH // 2 - 30, 80, 60, 150),
-        pygame.Rect(WIDTH // 2 - 30, HEIGHT - 230, 60, 150),
-        pygame.Rect(240, HEIGHT // 2 - 20, 180, 40),
-        pygame.Rect(WIDTH - 420, HEIGHT // 2 - 20, 180, 40),
-    ]
+    walls = generate_random_walls(arena)
 
     bullets: list[dict[str, object]] = []
 

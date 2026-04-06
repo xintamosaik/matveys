@@ -1,5 +1,6 @@
 import sys
 import random
+from pathlib import Path
 
 import pygame
 
@@ -17,6 +18,8 @@ PLAYER_SIZE = 36
 BULLET_SIZE = 8
 SHOOT_COOLDOWN = 0.2
 MAX_HP = 5
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+SOLDIER_SPRITE_PATH = ASSETS_DIR / "soldier.png"
 
 
 def generate_random_walls(arena: pygame.Rect) -> list[pygame.Rect]:
@@ -74,12 +77,34 @@ def move_with_walls(rect: pygame.Rect, dx: int, dy: int, walls: list[pygame.Rect
     rect.clamp_ip(bounds)
 
 
+def load_player_sprite(size: int) -> pygame.Surface | None:
+    if not SOLDIER_SPRITE_PATH.exists():
+        return None
+
+    sprite = pygame.image.load(str(SOLDIER_SPRITE_PATH)).convert_alpha()
+    return pygame.transform.smoothscale(sprite, (size, size))
+
+
+def draw_player_sprite(
+    screen: pygame.Surface,
+    sprite: pygame.Surface,
+    player_rect: pygame.Rect,
+    direction: pygame.Vector2,
+) -> None:
+    # Rotate the sprite to face the player's latest movement/shoot direction.
+    angle = -direction.as_polar()[1]
+    rotated = pygame.transform.rotate(sprite, angle)
+    rotated_rect = rotated.get_rect(center=player_rect.center)
+    screen.blit(rotated, rotated_rect)
+
+
 def main() -> None:
     pygame.init()
     pygame.display.set_caption("Pygame - 2 Players")
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("monospace", 20)
+    player_sprite = load_player_sprite(PLAYER_SIZE)
 
     arena = screen.get_rect()
     players = {
@@ -201,7 +226,10 @@ def main() -> None:
         for wall in walls:
             pygame.draw.rect(screen, WALL_COLOR, wall, border_radius=4)
         for key in ("p1", "p2"):
-            pygame.draw.rect(screen, players[key]["color"], players[key]["rect"], border_radius=6)
+            if player_sprite is not None:
+                draw_player_sprite(screen, player_sprite, players[key]["rect"], players[key]["last_dir"])
+            else:
+                pygame.draw.rect(screen, players[key]["color"], players[key]["rect"], border_radius=6)
         for bullet in bullets:
             pygame.draw.rect(screen, BULLET_COLOR, bullet["rect"], border_radius=4)
 

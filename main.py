@@ -26,9 +26,9 @@ def generate_random_walls(arena: pygame.Rect) -> list[pygame.Rect]:
     wall_count = random.randint(5, 8)
     walls: list[pygame.Rect] = []
 
-    p1_safe = pygame.Rect(0, HEIGHT // 2 - 90, 230, 180)
-    p2_safe = pygame.Rect(WIDTH - 230, HEIGHT // 2 - 90, 230, 180)
-    center_lane = pygame.Rect(WIDTH // 2 - 90, HEIGHT // 2 - 40, 180, 80)
+    p1_safe = pygame.Rect(0, arena.height // 2 - 90, 230, 180)
+    p2_safe = pygame.Rect(arena.width - 230, arena.height // 2 - 90, 230, 180)
+    center_lane = pygame.Rect(arena.width // 2 - 90, arena.height // 2 - 40, 180, 80)
 
     tries = 0
     while len(walls) < wall_count and tries < 200:
@@ -98,10 +98,27 @@ def draw_player_sprite(
     screen.blit(rotated, rotated_rect)
 
 
+def reset_player_positions(players: dict[str, dict[str, object]], arena: pygame.Rect) -> None:
+    players["p1"]["rect"].topleft = (120, arena.height // 2 - PLAYER_SIZE // 2)
+    players["p2"]["rect"].topleft = (arena.width - 120 - PLAYER_SIZE, arena.height // 2 - PLAYER_SIZE // 2)
+
+
+def create_display(fullscreen: bool, windowed_size: tuple[int, int]) -> pygame.Surface:
+    if fullscreen:
+        return pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    return pygame.display.set_mode(windowed_size, pygame.RESIZABLE)
+
+
 def main() -> None:
     pygame.init()
     pygame.display.set_caption("Pygame - 2 Players")
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    display_info = pygame.display.Info()
+    windowed_size = (
+        min(WIDTH, display_info.current_w),
+        min(HEIGHT, display_info.current_h),
+    )
+    fullscreen = True
+    screen = create_display(fullscreen, windowed_size)
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("monospace", 20)
     player_sprite = load_player_sprite(PLAYER_SIZE)
@@ -109,14 +126,14 @@ def main() -> None:
     arena = screen.get_rect()
     players = {
         "p1": {
-            "rect": pygame.Rect(120, HEIGHT // 2 - PLAYER_SIZE // 2, PLAYER_SIZE, PLAYER_SIZE),
+            "rect": pygame.Rect(120, arena.height // 2 - PLAYER_SIZE // 2, PLAYER_SIZE, PLAYER_SIZE),
             "color": PLAYER1_COLOR,
             "hp": MAX_HP,
             "last_dir": pygame.Vector2(1, 0),
             "cooldown": 0.0,
         },
         "p2": {
-            "rect": pygame.Rect(WIDTH - 120 - PLAYER_SIZE, HEIGHT // 2 - PLAYER_SIZE // 2, PLAYER_SIZE, PLAYER_SIZE),
+            "rect": pygame.Rect(arena.width - 120 - PLAYER_SIZE, arena.height // 2 - PLAYER_SIZE // 2, PLAYER_SIZE, PLAYER_SIZE),
             "color": PLAYER2_COLOR,
             "hp": MAX_HP,
             "last_dir": pygame.Vector2(-1, 0),
@@ -135,6 +152,20 @@ def main() -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
+                if not fullscreen:
+                    windowed_size = screen.get_size()
+                fullscreen = not fullscreen
+                screen = create_display(fullscreen, windowed_size)
+                arena = screen.get_rect()
+                walls = generate_random_walls(arena)
+                reset_player_positions(players, arena)
+            elif event.type == pygame.VIDEORESIZE and not fullscreen:
+                windowed_size = (max(640, event.w), max(360, event.h))
+                screen = create_display(False, windowed_size)
+                arena = screen.get_rect()
+                walls = generate_random_walls(arena)
+                reset_player_positions(players, arena)
 
         keys = pygame.key.get_pressed()
 
@@ -238,7 +269,7 @@ def main() -> None:
             True,
             TEXT_COLOR,
         )
-        controls_text = font.render("P1: WASD + SPACE | P2: ARROWS + RIGHT CTRL", True, TEXT_COLOR)
+        controls_text = font.render("P1: WASD + SPACE | P2: ARROWS + RIGHT CTRL | F11: fullscreen", True, TEXT_COLOR)
         screen.blit(status_text, (12, 10))
         screen.blit(controls_text, (12, 34))
 
@@ -255,7 +286,14 @@ def main() -> None:
 
             screen.fill(BG_COLOR)
             msg = font.render(f"{winner} wins! Press ESC or close window.", True, (226, 232, 240))
-            screen.blit(msg, (WIDTH // 2 - msg.get_width() // 2, HEIGHT // 2 - msg.get_height() // 2))
+            current_rect = screen.get_rect()
+            screen.blit(
+                msg,
+                (
+                    current_rect.width // 2 - msg.get_width() // 2,
+                    current_rect.height // 2 - msg.get_height() // 2,
+                ),
+            )
             pygame.display.flip()
 
     pygame.quit()

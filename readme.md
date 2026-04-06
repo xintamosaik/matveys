@@ -1,6 +1,6 @@
 # Pygame Starter
 
-A minimal game template using pygame.
+A minimal two-player arena game using pygame.
 
 ## 1) Create and activate a virtual environment
 
@@ -24,8 +24,18 @@ python main.py
 
 ## Controls
 
-- Move: WASD or arrow keys
+- Player 1 move: W A S D
+- Player 1 shoot: Space
+- Player 2 move: Arrow keys
+- Player 2 shoot: Right Ctrl
+- Exit after match: Esc
 - Quit: close the window
+
+## Game rules
+
+- The map has walls that block movement and bullets.
+- Each player starts with 5 HP.
+- First player to reduce the opponent to 0 HP wins.
 
 ## Project files
 

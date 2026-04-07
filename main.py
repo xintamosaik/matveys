@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sys
 import random
 from pathlib import Path
@@ -208,7 +210,9 @@ def safe_get_events() -> list[pygame.event.Event]:
 
 
 def main() -> None:
-    pygame.init()
+    # Initialize only modules we use; pygame.init() can stall on audio backends.
+    pygame.display.init()
+    pygame.font.init()
     pygame.joystick.init()
     pygame.display.set_caption("Pygame - 2 Players")
     display_info = pygame.display.Info()
@@ -219,7 +223,8 @@ def main() -> None:
     fullscreen = True
     screen = create_display(fullscreen, windowed_size)
     clock = pygame.time.Clock()
-    font = pygame.font.SysFont("monospace", 20)
+    # Default pygame font avoids slow system font scanning at startup.
+    font = pygame.font.Font(None, 28)
     player_sprite = load_player_sprite(PLAYER_SPRITE_SIZE)
     controllers = get_connected_controllers()
 

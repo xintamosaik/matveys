@@ -13,6 +13,7 @@ WALL_COLOR = (55, 65, 81)
 BULLET_COLOR = (250, 204, 21)
 TEXT_COLOR = (148, 163, 184)
 PLAYER_SPEED = 280
+RUN_SPEED_MULTIPLIER = 1.8
 GRENADE_SPEED = 260
 BULLET_SPEED = 560
 PLAYER_SIZE = 36
@@ -229,17 +230,20 @@ def main() -> None:
         p2_x = int(keys[pygame.K_RIGHT]) - int(keys[pygame.K_LEFT])
         p2_y = int(keys[pygame.K_DOWN]) - int(keys[pygame.K_UP])
 
+        p1_speed = PLAYER_SPEED * (RUN_SPEED_MULTIPLIER if keys[pygame.K_LSHIFT] else 1.0)
+        p2_speed = PLAYER_SPEED * (RUN_SPEED_MULTIPLIER if keys[pygame.K_RSHIFT] else 1.0)
+
         move_with_walls(
             players["p1"]["rect"],
-            int(p1_x * PLAYER_SPEED * dt),
-            int(p1_y * PLAYER_SPEED * dt),
+            int(p1_x * p1_speed * dt),
+            int(p1_y * p1_speed * dt),
             walls,
             arena,
         )
         move_with_walls(
             players["p2"]["rect"],
-            int(p2_x * PLAYER_SPEED * dt),
-            int(p2_y * PLAYER_SPEED * dt),
+            int(p2_x * p2_speed * dt),
+            int(p2_y * p2_speed * dt),
             walls,
             arena,
         )
@@ -397,7 +401,11 @@ def main() -> None:
             True,
             TEXT_COLOR,
         )
-        controls_text = font.render("P1: WASD + SPACE (grenades then bullets) | P2: ARROWS + RIGHT CTRL | F11: fullscreen", True, TEXT_COLOR)
+        controls_text = font.render(
+            "P1: WASD + LSHIFT run + SPACE | P2: ARROWS + RSHIFT run + RIGHT CTRL | F11: fullscreen",
+            True,
+            TEXT_COLOR,
+        )
         screen.blit(status_text, (12, 10))
         screen.blit(controls_text, (12, 34))
 

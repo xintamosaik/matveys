@@ -25,9 +25,13 @@ python main.py
 ## Controls
 
 - Player 1 move: W A S D
+- Player 1 run: Left Shift (no stamina limit)
 - Player 1 fire: Space (first 3 shots are grenades)
+- Player 1 controller: Left Stick or D-pad move, LB/RB run, A/B/X/Y fire
 - Player 2 move: Arrow keys
+- Player 2 run: Right Shift (no stamina limit)
 - Player 2 fire: Right Ctrl (first 3 shots are grenades)
+- Player 2 controller: Left Stick or D-pad move, LB/RB run, A/B/X/Y fire
 - Exit after match: Esc
 - Quit: close the window
 

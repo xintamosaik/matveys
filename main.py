@@ -27,6 +27,7 @@ GRENADE_DAMAGE = 3
 BULLET_DAMAGE = 1
 GRENADE_AOE_RADIUS = 70
 GRENADE_AOE_DURATION = 0.18
+CONTROLLER_DEADZONE = 0.35
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 SOLDIER_SPRITE_PATH = ASSETS_DIR / "soldier.png"
 
@@ -159,8 +160,47 @@ def draw_grenade_projectile(screen: pygame.Surface, grenade_rect: pygame.Rect, v
     pygame.draw.line(screen, (244, 114, 182), fuse_start, fuse_end, 2)
 
 
+def apply_deadzone(value: float, deadzone: float) -> float:
+    if abs(value) < deadzone:
+        return 0.0
+    return value
+
+
+def get_controller_intent(controller: "pygame.joystick.Joystick | None") -> tuple[float, float, bool, bool]:
+    if controller is None:
+        return 0.0, 0.0, False, False
+
+    axis_x = apply_deadzone(controller.get_axis(0), CONTROLLER_DEADZONE) if controller.get_numaxes() > 0 else 0.0
+    axis_y = apply_deadzone(controller.get_axis(1), CONTROLLER_DEADZONE) if controller.get_numaxes() > 1 else 0.0
+
+    dpad_x = 0
+    dpad_y = 0
+    if controller.get_numhats() > 0:
+        hat_x, hat_y = controller.get_hat(0)
+        dpad_x = hat_x
+        dpad_y = -hat_y
+
+    x_input = float(dpad_x) if dpad_x != 0 else axis_x
+    y_input = float(dpad_y) if dpad_y != 0 else axis_y
+
+    button_count = controller.get_numbuttons()
+    run = any(controller.get_button(i) for i in (4, 5) if i < button_count)
+    fire = any(controller.get_button(i) for i in (0, 1, 2, 3) if i < button_count)
+    return x_input, y_input, run, fire
+
+
+def get_connected_controllers() -> list["pygame.joystick.Joystick"]:
+    connected: list["pygame.joystick.Joystick"] = []
+    for i in range(pygame.joystick.get_count()):
+        joystick = pygame.joystick.Joystick(i)
+        joystick.init()
+        connected.append(joystick)
+    return connected
+
+
 def main() -> None:
     pygame.init()
+    pygame.joystick.init()
     pygame.display.set_caption("Pygame - 2 Players")
     display_info = pygame.display.Info()
     windowed_size = (
@@ -172,6 +212,7 @@ def main() -> None:
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("monospace", 20)
     player_sprite = load_player_sprite(PLAYER_SPRITE_SIZE)
+    controllers = get_connected_controllers()
 
     arena = screen.get_rect()
     grenade_max_range = arena.width / 3
@@ -222,28 +263,44 @@ def main() -> None:
                 grenade_max_range = arena.width / 3
                 walls = generate_random_walls(arena)
                 reset_player_positions(players, arena)
+            elif event.type in (pygame.JOYDEVICEADDED, pygame.JOYDEVICEREMOVED):
+                controllers = get_connected_controllers()
 
         keys = pygame.key.get_pressed()
 
-        p1_x = int(keys[pygame.K_d]) - int(keys[pygame.K_a])
-        p1_y = int(keys[pygame.K_s]) - int(keys[pygame.K_w])
-        p2_x = int(keys[pygame.K_RIGHT]) - int(keys[pygame.K_LEFT])
-        p2_y = int(keys[pygame.K_DOWN]) - int(keys[pygame.K_UP])
+        p1_controller = controllers[0] if len(controllers) > 0 else None
+        p2_controller = controllers[1] if len(controllers) > 1 else None
 
-        p1_speed = PLAYER_SPEED * (RUN_SPEED_MULTIPLIER if keys[pygame.K_LSHIFT] else 1.0)
-        p2_speed = PLAYER_SPEED * (RUN_SPEED_MULTIPLIER if keys[pygame.K_RSHIFT] else 1.0)
+        p1_cx, p1_cy, p1_run_btn, p1_fire_btn = get_controller_intent(p1_controller)
+        p2_cx, p2_cy, p2_run_btn, p2_fire_btn = get_controller_intent(p2_controller)
+
+        p1_key_x = int(keys[pygame.K_d]) - int(keys[pygame.K_a])
+        p1_key_y = int(keys[pygame.K_s]) - int(keys[pygame.K_w])
+        p2_key_x = int(keys[pygame.K_RIGHT]) - int(keys[pygame.K_LEFT])
+        p2_key_y = int(keys[pygame.K_DOWN]) - int(keys[pygame.K_UP])
+
+        p1_x = p1_cx if p1_cx != 0 else float(p1_key_x)
+        p1_y = p1_cy if p1_cy != 0 else float(p1_key_y)
+        p2_x = p2_cx if p2_cx != 0 else float(p2_key_x)
+        p2_y = p2_cy if p2_cy != 0 else float(p2_key_y)
+
+        p1_run = keys[pygame.K_LSHIFT] or p1_run_btn
+        p2_run = keys[pygame.K_RSHIFT] or p2_run_btn
+
+        p1_speed = PLAYER_SPEED * (RUN_SPEED_MULTIPLIER if p1_run else 1.0)
+        p2_speed = PLAYER_SPEED * (RUN_SPEED_MULTIPLIER if p2_run else 1.0)
 
         move_with_walls(
             players["p1"]["rect"],
-            int(p1_x * p1_speed * dt),
-            int(p1_y * p1_speed * dt),
+            int(round(p1_x * p1_speed * dt)),
+            int(round(p1_y * p1_speed * dt)),
             walls,
             arena,
         )
         move_with_walls(
             players["p2"]["rect"],
-            int(p2_x * p2_speed * dt),
-            int(p2_y * p2_speed * dt),
+            int(round(p2_x * p2_speed * dt)),
+            int(round(p2_y * p2_speed * dt)),
             walls,
             arena,
         )
@@ -256,7 +313,10 @@ def main() -> None:
         players["p1"]["cooldown"] = max(0.0, float(players["p1"]["cooldown"]) - dt)
         players["p2"]["cooldown"] = max(0.0, float(players["p2"]["cooldown"]) - dt)
 
-        if keys[pygame.K_SPACE] and float(players["p1"]["cooldown"]) <= 0.0:
+        p1_fire = keys[pygame.K_SPACE] or p1_fire_btn
+        p2_fire = keys[pygame.K_RCTRL] or p2_fire_btn
+
+        if p1_fire and float(players["p1"]["cooldown"]) <= 0.0:
             direction = players["p1"]["last_dir"]
             origin = players["p1"]["rect"].center
             has_grenade = int(players["p1"]["grenades"]) > 0
@@ -281,7 +341,7 @@ def main() -> None:
             if has_grenade:
                 players["p1"]["grenades"] = int(players["p1"]["grenades"]) - 1
 
-        if keys[pygame.K_RCTRL] and float(players["p2"]["cooldown"]) <= 0.0:
+        if p2_fire and float(players["p2"]["cooldown"]) <= 0.0:
             direction = players["p2"]["last_dir"]
             origin = players["p2"]["rect"].center
             has_grenade = int(players["p2"]["grenades"]) > 0
@@ -402,12 +462,21 @@ def main() -> None:
             TEXT_COLOR,
         )
         controls_text = font.render(
-            "P1: WASD + LSHIFT run + SPACE | P2: ARROWS + RSHIFT run + RIGHT CTRL | F11: fullscreen",
+            "P1: WASD/Left Stick + Shift/LB run + Space/A fire | P2: Arrows/Stick + Shift/LB run + RCtrl/A fire",
+            True,
+            TEXT_COLOR,
+        )
+        controller_text = font.render(
+            (
+                f"Controllers: {len(controllers)} connected "
+                f"(P1: {'Yes' if p1_controller else 'No'} | P2: {'Yes' if p2_controller else 'No'}) | F11: fullscreen"
+            ),
             True,
             TEXT_COLOR,
         )
         screen.blit(status_text, (12, 10))
         screen.blit(controls_text, (12, 34))
+        screen.blit(controller_text, (12, 58))
 
         pygame.display.flip()
 

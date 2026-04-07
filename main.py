@@ -33,7 +33,7 @@ SOLDIER_SPRITE_PATH = ASSETS_DIR / "soldier.png"
 
 
 def generate_random_walls(arena: pygame.Rect) -> list[pygame.Rect]:
-    wall_count = random.randint(5, 8)
+    wall_count = random.randint(13, 18)
     walls: list[pygame.Rect] = []
 
     p1_safe = pygame.Rect(0, arena.height // 2 - 90, 230, 180)
@@ -41,7 +41,7 @@ def generate_random_walls(arena: pygame.Rect) -> list[pygame.Rect]:
     center_lane = pygame.Rect(arena.width // 2 - 90, arena.height // 2 - 40, 180, 80)
 
     tries = 0
-    while len(walls) < wall_count and tries < 200:
+    while len(walls) < wall_count and tries < 520:
         tries += 1
 
         if random.random() < 0.5:
@@ -198,6 +198,15 @@ def get_connected_controllers() -> list["pygame.joystick.Joystick"]:
     return connected
 
 
+def safe_get_events() -> list[pygame.event.Event]:
+    try:
+        return pygame.event.get()
+    except (KeyError, SystemError):
+        # Rare SDL/pygame event conversion glitch; keep running instead of crashing.
+        pygame.event.pump()
+        return []
+
+
 def main() -> None:
     pygame.init()
     pygame.joystick.init()
@@ -244,18 +253,21 @@ def main() -> None:
     while running:
         dt = clock.tick(60) / 1000.0
 
-        for event in pygame.event.get():
+        for event in safe_get_events():
             if event.type == pygame.QUIT:
                 running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
-                if not fullscreen:
-                    windowed_size = screen.get_size()
-                fullscreen = not fullscreen
-                screen = create_display(fullscreen, windowed_size)
-                arena = screen.get_rect()
-                grenade_max_range = arena.width / 3
-                walls = generate_random_walls(arena)
-                reset_player_positions(players, arena)
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
+                elif event.key == pygame.K_F11:
+                    if not fullscreen:
+                        windowed_size = screen.get_size()
+                    fullscreen = not fullscreen
+                    screen = create_display(fullscreen, windowed_size)
+                    arena = screen.get_rect()
+                    grenade_max_range = arena.width / 3
+                    walls = generate_random_walls(arena)
+                    reset_player_positions(players, arena)
             elif event.type == pygame.VIDEORESIZE and not fullscreen:
                 windowed_size = (max(640, event.w), max(360, event.h))
                 screen = create_display(False, windowed_size)
@@ -483,7 +495,7 @@ def main() -> None:
     if winner is not None:
         end_screen = True
         while end_screen:
-            for event in pygame.event.get():
+            for event in safe_get_events():
                 if event.type == pygame.QUIT:
                     end_screen = False
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:

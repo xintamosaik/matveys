@@ -15,6 +15,7 @@ TEXT_COLOR = (148, 163, 184)
 PLAYER_SPEED = 280
 BULLET_SPEED = 560
 PLAYER_SIZE = 36
+PLAYER_SPRITE_SIZE = 120
 BULLET_SIZE = 8
 SHOOT_COOLDOWN = 0.2
 MAX_HP = 5
@@ -81,7 +82,19 @@ def load_player_sprite(size: int) -> pygame.Surface | None:
     if not SOLDIER_SPRITE_PATH.exists():
         return None
 
-    sprite = pygame.image.load(str(SOLDIER_SPRITE_PATH)).convert_alpha()
+    loaded = pygame.image.load(str(SOLDIER_SPRITE_PATH))
+    has_alpha = bool(loaded.get_flags() & pygame.SRCALPHA) or loaded.get_masks()[3] != 0
+
+    if has_alpha:
+        sprite = loaded.convert_alpha()
+    else:
+        # If there is no alpha channel, remove a white-ish backdrop via colorkey.
+        corner = loaded.get_at((0, 0))[:3]
+        corner_brightness = sum(corner)
+        key_color = (255, 255, 255) if corner_brightness > 600 else corner
+        sprite = loaded.convert()
+        sprite.set_colorkey(key_color, pygame.RLEACCEL)
+
     return pygame.transform.smoothscale(sprite, (size, size))
 
 
@@ -121,7 +134,7 @@ def main() -> None:
     screen = create_display(fullscreen, windowed_size)
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("monospace", 20)
-    player_sprite = load_player_sprite(PLAYER_SIZE)
+    player_sprite = load_player_sprite(PLAYER_SPRITE_SIZE)
 
     arena = screen.get_rect()
     players = {

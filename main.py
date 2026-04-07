@@ -13,12 +13,16 @@ WALL_COLOR = (55, 65, 81)
 BULLET_COLOR = (250, 204, 21)
 TEXT_COLOR = (148, 163, 184)
 PLAYER_SPEED = 280
-BULLET_SPEED = 560
+GRENADE_SPEED = 260
 PLAYER_SIZE = 36
 PLAYER_SPRITE_SIZE = 120
 BULLET_SIZE = 8
 SHOOT_COOLDOWN = 0.2
 MAX_HP = 5
+GRENADE_COUNT = 3
+GRENADE_DAMAGE = 3
+GRENADE_AOE_RADIUS = 70
+GRENADE_AOE_DURATION = 0.18
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 SOLDIER_SPRITE_PATH = ASSETS_DIR / "soldier.png"
 
@@ -122,6 +126,35 @@ def create_display(fullscreen: bool, windowed_size: tuple[int, int]) -> pygame.S
     return pygame.display.set_mode(windowed_size, pygame.RESIZABLE)
 
 
+def rect_within_radius(rect: pygame.Rect, center: pygame.Vector2, radius: float) -> bool:
+    closest_x = max(rect.left, min(center.x, rect.right))
+    closest_y = max(rect.top, min(center.y, rect.bottom))
+    dx = center.x - closest_x
+    dy = center.y - closest_y
+    return dx * dx + dy * dy <= radius * radius
+
+
+def draw_grenade_projectile(screen: pygame.Surface, grenade_rect: pygame.Rect, velocity: pygame.Vector2) -> None:
+    center = grenade_rect.center
+    radius = max(4, grenade_rect.width // 2)
+
+    # Main body with a small highlight to feel round instead of boxy.
+    pygame.draw.circle(screen, (84, 74, 63), center, radius)
+    pygame.draw.circle(screen, (120, 107, 92), (center[0] - 2, center[1] - 2), max(2, radius // 2))
+    pygame.draw.circle(screen, (28, 25, 23), center, radius, 1)
+
+    # Fuse cap and short fuse line pointing opposite to travel direction.
+    direction = pygame.Vector2(velocity)
+    if direction.length_squared() > 0:
+        direction = direction.normalize()
+    else:
+        direction = pygame.Vector2(1, 0)
+    fuse_start = (int(center[0] - direction.x * radius), int(center[1] - direction.y * radius))
+    fuse_end = (int(fuse_start[0] - direction.x * 6), int(fuse_start[1] - direction.y * 6))
+    pygame.draw.circle(screen, (199, 210, 254), fuse_start, 2)
+    pygame.draw.line(screen, (244, 114, 182), fuse_start, fuse_end, 2)
+
+
 def main() -> None:
     pygame.init()
     pygame.display.set_caption("Pygame - 2 Players")
@@ -137,11 +170,13 @@ def main() -> None:
     player_sprite = load_player_sprite(PLAYER_SPRITE_SIZE)
 
     arena = screen.get_rect()
+    grenade_max_range = arena.width / 3
     players = {
         "p1": {
             "rect": pygame.Rect(120, arena.height // 2 - PLAYER_SIZE // 2, PLAYER_SIZE, PLAYER_SIZE),
             "color": PLAYER1_COLOR,
             "hp": MAX_HP,
+            "grenades": GRENADE_COUNT,
             "last_dir": pygame.Vector2(1, 0),
             "cooldown": 0.0,
         },
@@ -149,6 +184,7 @@ def main() -> None:
             "rect": pygame.Rect(arena.width - 120 - PLAYER_SIZE, arena.height // 2 - PLAYER_SIZE // 2, PLAYER_SIZE, PLAYER_SIZE),
             "color": PLAYER2_COLOR,
             "hp": MAX_HP,
+            "grenades": GRENADE_COUNT,
             "last_dir": pygame.Vector2(-1, 0),
             "cooldown": 0.0,
         },
@@ -157,6 +193,7 @@ def main() -> None:
     walls = generate_random_walls(arena)
 
     bullets: list[dict[str, object]] = []
+    explosions: list[dict[str, object]] = []
 
     running = True
     while running:
@@ -171,12 +208,14 @@ def main() -> None:
                 fullscreen = not fullscreen
                 screen = create_display(fullscreen, windowed_size)
                 arena = screen.get_rect()
+                grenade_max_range = arena.width / 3
                 walls = generate_random_walls(arena)
                 reset_player_positions(players, arena)
             elif event.type == pygame.VIDEORESIZE and not fullscreen:
                 windowed_size = (max(640, event.w), max(360, event.h))
                 screen = create_display(False, windowed_size)
                 arena = screen.get_rect()
+                grenade_max_range = arena.width / 3
                 walls = generate_random_walls(arena)
                 reset_player_positions(players, arena)
 
@@ -210,52 +249,78 @@ def main() -> None:
         players["p1"]["cooldown"] = max(0.0, float(players["p1"]["cooldown"]) - dt)
         players["p2"]["cooldown"] = max(0.0, float(players["p2"]["cooldown"]) - dt)
 
-        if keys[pygame.K_SPACE] and float(players["p1"]["cooldown"]) <= 0.0:
+        if (
+            keys[pygame.K_SPACE]
+            and float(players["p1"]["cooldown"]) <= 0.0
+            and int(players["p1"]["grenades"]) > 0
+        ):
             direction = players["p1"]["last_dir"]
             origin = players["p1"]["rect"].center
             bullets.append(
                 {
                     "rect": pygame.Rect(origin[0] - BULLET_SIZE // 2, origin[1] - BULLET_SIZE // 2, BULLET_SIZE, BULLET_SIZE),
-                    "vel": pygame.Vector2(direction.x, direction.y) * BULLET_SPEED,
+                    "vel": pygame.Vector2(direction.x, direction.y) * GRENADE_SPEED,
                     "owner": "p1",
+                    "distance": 0.0,
                 }
             )
             players["p1"]["cooldown"] = SHOOT_COOLDOWN
+            players["p1"]["grenades"] = int(players["p1"]["grenades"]) - 1
 
-        if keys[pygame.K_RCTRL] and float(players["p2"]["cooldown"]) <= 0.0:
+        if (
+            keys[pygame.K_RCTRL]
+            and float(players["p2"]["cooldown"]) <= 0.0
+            and int(players["p2"]["grenades"]) > 0
+        ):
             direction = players["p2"]["last_dir"]
             origin = players["p2"]["rect"].center
             bullets.append(
                 {
                     "rect": pygame.Rect(origin[0] - BULLET_SIZE // 2, origin[1] - BULLET_SIZE // 2, BULLET_SIZE, BULLET_SIZE),
-                    "vel": pygame.Vector2(direction.x, direction.y) * BULLET_SPEED,
+                    "vel": pygame.Vector2(direction.x, direction.y) * GRENADE_SPEED,
                     "owner": "p2",
+                    "distance": 0.0,
                 }
             )
             players["p2"]["cooldown"] = SHOOT_COOLDOWN
+            players["p2"]["grenades"] = int(players["p2"]["grenades"]) - 1
 
         kept_bullets: list[dict[str, object]] = []
         for bullet in bullets:
             bullet_rect = bullet["rect"]
             velocity = bullet["vel"]
+            travel_step = float(velocity.length() * dt)
+            bullet["distance"] = float(bullet["distance"]) + travel_step
             bullet_rect.x += int(velocity.x * dt)
             bullet_rect.y += int(velocity.y * dt)
 
-            if not arena.colliderect(bullet_rect):
-                continue
-
-            if any(bullet_rect.colliderect(wall) for wall in walls):
-                continue
+            hit_wall = any(bullet_rect.colliderect(wall) for wall in walls)
+            out_of_bounds = not arena.colliderect(bullet_rect)
+            reached_max_range = float(bullet["distance"]) >= grenade_max_range
 
             owner = bullet["owner"]
             target = "p2" if owner == "p1" else "p1"
-            if bullet_rect.colliderect(players[target]["rect"]):
-                players[target]["hp"] = max(0, int(players[target]["hp"]) - 1)
+            hit_player = bullet_rect.colliderect(players[target]["rect"])
+
+            if hit_wall or hit_player or out_of_bounds or reached_max_range:
+                explosion_center = pygame.Vector2(bullet_rect.center)
+                explosions.append({"center": explosion_center, "ttl": GRENADE_AOE_DURATION})
+
+                for player_key in ("p1", "p2"):
+                    if rect_within_radius(players[player_key]["rect"], explosion_center, GRENADE_AOE_RADIUS):
+                        players[player_key]["hp"] = max(0, int(players[player_key]["hp"]) - GRENADE_DAMAGE)
                 continue
 
             kept_bullets.append(bullet)
 
         bullets = kept_bullets
+
+        kept_explosions: list[dict[str, object]] = []
+        for explosion in explosions:
+            explosion["ttl"] = float(explosion["ttl"]) - dt
+            if float(explosion["ttl"]) > 0:
+                kept_explosions.append(explosion)
+        explosions = kept_explosions
 
         winner = None
         if int(players["p1"]["hp"]) <= 0:
@@ -275,14 +340,36 @@ def main() -> None:
             else:
                 pygame.draw.rect(screen, players[key]["color"], players[key]["rect"], border_radius=6)
         for bullet in bullets:
-            pygame.draw.rect(screen, BULLET_COLOR, bullet["rect"], border_radius=4)
+            draw_grenade_projectile(screen, bullet["rect"], bullet["vel"])
+
+        for explosion in explosions:
+            alpha = int(130 * (float(explosion["ttl"]) / GRENADE_AOE_DURATION))
+            aoe_surface = pygame.Surface((arena.width, arena.height), pygame.SRCALPHA)
+            pygame.draw.circle(
+                aoe_surface,
+                (255, 0, 0, max(0, min(130, alpha))),
+                (int(explosion["center"].x), int(explosion["center"].y)),
+                GRENADE_AOE_RADIUS,
+            )
+            pygame.draw.circle(
+                aoe_surface,
+                (255, 90, 90, max(0, min(180, alpha + 30))),
+                (int(explosion["center"].x), int(explosion["center"].y)),
+                GRENADE_AOE_RADIUS,
+                2,
+            )
+            screen.blit(aoe_surface, (0, 0))
 
         status_text = font.render(
-            f"P1 HP: {players['p1']['hp']}    P2 HP: {players['p2']['hp']}    FPS: {clock.get_fps():.1f}",
+            (
+                f"P1 HP: {players['p1']['hp']} G: {players['p1']['grenades']}    "
+                f"P2 HP: {players['p2']['hp']} G: {players['p2']['grenades']}    "
+                f"FPS: {clock.get_fps():.1f}"
+            ),
             True,
             TEXT_COLOR,
         )
-        controls_text = font.render("P1: WASD + SPACE | P2: ARROWS + RIGHT CTRL | F11: fullscreen", True, TEXT_COLOR)
+        controls_text = font.render("P1: WASD + SPACE (grenade) | P2: ARROWS + RIGHT CTRL (grenade) | F11: fullscreen", True, TEXT_COLOR)
         screen.blit(status_text, (12, 10))
         screen.blit(controls_text, (12, 34))
 

@@ -25,9 +25,9 @@ python main.py
 ## Controls
 
 - Player 1 move: W A S D
-- Player 1 throw grenade: Space (3 grenades total)
+- Player 1 fire: Space (first 3 shots are grenades)
 - Player 2 move: Arrow keys
-- Player 2 throw grenade: Right Ctrl (3 grenades total)
+- Player 2 fire: Right Ctrl (first 3 shots are grenades)
 - Exit after match: Esc
 - Quit: close the window
 
@@ -35,7 +35,7 @@ python main.py
 
 - The map has walls that block movement and bullets.
 - Each player starts with 5 HP.
-- Each player has exactly 3 slow grenades.
+- Each player has exactly 3 slow grenades, then continues with regular bullets.
 - Grenades explode in an AOE circle and deal 3 damage to any player inside the blast radius.
 - First player to reduce the opponent to 0 HP wins.
 

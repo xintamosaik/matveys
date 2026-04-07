@@ -32,7 +32,7 @@ python main.py
 - Player 2 run: Right Shift (no stamina limit)
 - Player 2 fire: Right Ctrl (first 3 shots are grenades)
 - Player 2 controller: Left Stick or D-pad move, LB/RB run, A/B/X/Y fire
-- Exit after match: Esc
+- Exit anytime: Esc
 - Quit: close the window
 
 ## Game rules

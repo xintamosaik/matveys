@@ -229,7 +229,7 @@ def main() -> None:
     controllers = get_connected_controllers()
 
     arena = screen.get_rect()
-    grenade_max_range = arena.width / 3
+    grenade_max_range = arena.width / 8
     players = {
         "p1": {
             "rect": pygame.Rect(120, arena.height // 2 - PLAYER_SIZE // 2, PLAYER_SIZE, PLAYER_SIZE),
@@ -270,14 +270,14 @@ def main() -> None:
                     fullscreen = not fullscreen
                     screen = create_display(fullscreen, windowed_size)
                     arena = screen.get_rect()
-                    grenade_max_range = arena.width / 3
+                    grenade_max_range = arena.width / 8
                     walls = generate_random_walls(arena)
                     reset_player_positions(players, arena)
             elif event.type == pygame.VIDEORESIZE and not fullscreen:
                 windowed_size = (max(640, event.w), max(360, event.h))
                 screen = create_display(False, windowed_size)
                 arena = screen.get_rect()
-                grenade_max_range = arena.width / 3
+                grenade_max_range = arena.width / 8
                 walls = generate_random_walls(arena)
                 reset_player_positions(players, arena)
             elif event.type in (pygame.JOYDEVICEADDED, pygame.JOYDEVICEREMOVED):
@@ -401,7 +401,7 @@ def main() -> None:
             target = "p2" if owner == "p1" else "p1"
             hit_player = bullet_rect.colliderect(players[target]["rect"])
 
-            if kind == "grenade" and (hit_wall or hit_player or out_of_bounds or reached_max_range):
+            if kind == "grenade" and (hit_player or out_of_bounds or reached_max_range):
                 explosion_center = pygame.Vector2(bullet_rect.center)
                 explosions.append({"center": explosion_center, "ttl": GRENADE_AOE_DURATION})
 

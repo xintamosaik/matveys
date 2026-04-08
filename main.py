@@ -29,6 +29,10 @@ GRENADE_DAMAGE = 3
 BULLET_DAMAGE = 1
 GRENADE_AOE_RADIUS = 70
 GRENADE_AOE_DURATION = 0.18
+GRENADE_PICKUP_SIZE = 20
+GRENADE_PICKUP_LIFETIME = 10.0
+GRENADE_PICKUP_MIN_SPAWN = 5.0
+GRENADE_PICKUP_MAX_SPAWN = 9.0
 CONTROLLER_DEADZONE = 0.35
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 SOLDIER_SPRITE_PATH = ASSETS_DIR / "soldier.png"
@@ -162,6 +166,21 @@ def draw_grenade_projectile(screen: pygame.Surface, grenade_rect: pygame.Rect, v
     pygame.draw.line(screen, (244, 114, 182), fuse_start, fuse_end, 2)
 
 
+def spawn_grenade_pickup(arena: pygame.Rect, walls: list[pygame.Rect], players: dict[str, dict[str, object]]) -> pygame.Rect | None:
+    for _ in range(120):
+        x = random.randint(20, max(20, arena.width - GRENADE_PICKUP_SIZE - 20))
+        y = random.randint(20, max(20, arena.height - GRENADE_PICKUP_SIZE - 20))
+        candidate = pygame.Rect(x, y, GRENADE_PICKUP_SIZE, GRENADE_PICKUP_SIZE)
+
+        if any(candidate.colliderect(wall) for wall in walls):
+            continue
+        if any(candidate.colliderect(players[key]["rect"]) for key in ("p1", "p2")):
+            continue
+        return candidate
+
+    return None
+
+
 def apply_deadzone(value: float, deadzone: float) -> float:
     if abs(value) < deadzone:
         return 0.0
@@ -253,6 +272,8 @@ def main() -> None:
 
     bullets: list[dict[str, object]] = []
     explosions: list[dict[str, object]] = []
+    grenade_pickups: list[dict[str, object]] = []
+    pickup_spawn_timer = random.uniform(GRENADE_PICKUP_MIN_SPAWN, GRENADE_PICKUP_MAX_SPAWN)
 
     running = True
     while running:
@@ -273,6 +294,8 @@ def main() -> None:
                     grenade_max_range = arena.width / 8
                     walls = generate_random_walls(arena)
                     reset_player_positions(players, arena)
+                    grenade_pickups.clear()
+                    pickup_spawn_timer = random.uniform(GRENADE_PICKUP_MIN_SPAWN, GRENADE_PICKUP_MAX_SPAWN)
             elif event.type == pygame.VIDEORESIZE and not fullscreen:
                 windowed_size = (max(640, event.w), max(360, event.h))
                 screen = create_display(False, windowed_size)
@@ -280,6 +303,8 @@ def main() -> None:
                 grenade_max_range = arena.width / 8
                 walls = generate_random_walls(arena)
                 reset_player_positions(players, arena)
+                grenade_pickups.clear()
+                pickup_spawn_timer = random.uniform(GRENADE_PICKUP_MIN_SPAWN, GRENADE_PICKUP_MAX_SPAWN)
             elif event.type in (pygame.JOYDEVICEADDED, pygame.JOYDEVICEREMOVED):
                 controllers = get_connected_controllers()
 
@@ -428,6 +453,30 @@ def main() -> None:
                 kept_explosions.append(explosion)
         explosions = kept_explosions
 
+        pickup_spawn_timer -= dt
+        if pickup_spawn_timer <= 0.0:
+            pickup_spawn_timer = random.uniform(GRENADE_PICKUP_MIN_SPAWN, GRENADE_PICKUP_MAX_SPAWN)
+            pickup_rect = spawn_grenade_pickup(arena, walls, players)
+            if pickup_rect is not None:
+                grenade_pickups.append({"rect": pickup_rect, "ttl": GRENADE_PICKUP_LIFETIME})
+
+        kept_pickups: list[dict[str, object]] = []
+        for pickup in grenade_pickups:
+            pickup["ttl"] = float(pickup["ttl"]) - dt
+            if float(pickup["ttl"]) <= 0.0:
+                continue
+
+            picked = False
+            for player_key in ("p1", "p2"):
+                if pickup["rect"].colliderect(players[player_key]["rect"]):
+                    players[player_key]["grenades"] = GRENADE_COUNT
+                    picked = True
+                    break
+
+            if not picked:
+                kept_pickups.append(pickup)
+        grenade_pickups = kept_pickups
+
         winner = None
         if int(players["p1"]["hp"]) <= 0:
             winner = "Player 2"
@@ -468,6 +517,15 @@ def main() -> None:
                 2,
             )
             screen.blit(aoe_surface, (0, 0))
+
+        for pickup in grenade_pickups:
+            pickup_rect = pickup["rect"]
+            center = pickup_rect.center
+            radius = max(4, pickup_rect.width // 2)
+            pygame.draw.circle(screen, (74, 222, 128), center, radius)
+            pygame.draw.circle(screen, (22, 163, 74), center, radius, 2)
+            pygame.draw.line(screen, (236, 253, 245), (center[0] - 4, center[1]), (center[0] + 4, center[1]), 2)
+            pygame.draw.line(screen, (236, 253, 245), (center[0], center[1] - 4), (center[0], center[1] + 4), 2)
 
         status_text = font.render(
             (

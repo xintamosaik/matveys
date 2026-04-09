@@ -24,11 +24,15 @@ BULLET_SIZE = 8
 GRENADE_SIZE = 22
 SHOOT_COOLDOWN = 0.2
 MAX_HP = 5
-GRENADE_COUNT = 2
-GRENADE_REFILL_TIME = 20.0
+EXPLOSIVE_GRENADE_COUNT = 2
+SMOKE_GRENADE_COUNT = 2
+SMOKE_REFILL_TIME = 20.0
 BULLET_DAMAGE = 1
-GRENADE_AOE_RADIUS = 145
-GRENADE_AOE_DURATION = 7.0
+EXPLOSIVE_GRENADE_DAMAGE = 3
+EXPLOSIVE_GRENADE_AOE_RADIUS = 70
+EXPLOSIVE_GRENADE_AOE_DURATION = 0.18
+SMOKE_AOE_RADIUS = 145
+SMOKE_AOE_DURATION = 7.0
 GRENADE_PICKUP_SIZE = 20
 GRENADE_PICKUP_LIFETIME = 10.0
 GRENADE_PICKUP_MIN_SPAWN = 5.0
@@ -187,9 +191,9 @@ def apply_deadzone(value: float, deadzone: float) -> float:
     return value
 
 
-def get_controller_intent(controller: "pygame.joystick.Joystick | None") -> tuple[float, float, bool, bool]:
+def get_controller_intent(controller: "pygame.joystick.Joystick | None") -> tuple[float, float, bool, bool, bool, bool]:
     if controller is None:
-        return 0.0, 0.0, False, False
+        return 0.0, 0.0, False, False, False, False
 
     axis_x = apply_deadzone(controller.get_axis(0), CONTROLLER_DEADZONE) if controller.get_numaxes() > 0 else 0.0
     axis_y = apply_deadzone(controller.get_axis(1), CONTROLLER_DEADZONE) if controller.get_numaxes() > 1 else 0.0
@@ -206,8 +210,10 @@ def get_controller_intent(controller: "pygame.joystick.Joystick | None") -> tupl
 
     button_count = controller.get_numbuttons()
     run = any(controller.get_button(i) for i in (4, 5) if i < button_count)
-    fire = any(controller.get_button(i) for i in (0, 1, 2, 3) if i < button_count)
-    return x_input, y_input, run, fire
+    bullet_fire = button_count > 0 and bool(controller.get_button(0))
+    grenade_fire = button_count > 1 and bool(controller.get_button(1))
+    smoke_fire = button_count > 2 and bool(controller.get_button(2))
+    return x_input, y_input, run, bullet_fire, grenade_fire, smoke_fire
 
 
 def get_connected_controllers() -> list["pygame.joystick.Joystick"]:
@@ -254,8 +260,9 @@ def main() -> None:
             "rect": pygame.Rect(120, arena.height // 2 - PLAYER_SIZE // 2, PLAYER_SIZE, PLAYER_SIZE),
             "color": PLAYER1_COLOR,
             "hp": MAX_HP,
-            "grenades": GRENADE_COUNT,
-            "grenade_refill": GRENADE_REFILL_TIME,
+            "grenades": EXPLOSIVE_GRENADE_COUNT,
+            "smokes": SMOKE_GRENADE_COUNT,
+            "smoke_refill": SMOKE_REFILL_TIME,
             "last_dir": pygame.Vector2(1, 0),
             "cooldown": 0.0,
         },
@@ -263,8 +270,9 @@ def main() -> None:
             "rect": pygame.Rect(arena.width - 120 - PLAYER_SIZE, arena.height // 2 - PLAYER_SIZE // 2, PLAYER_SIZE, PLAYER_SIZE),
             "color": PLAYER2_COLOR,
             "hp": MAX_HP,
-            "grenades": GRENADE_COUNT,
-            "grenade_refill": GRENADE_REFILL_TIME,
+            "grenades": EXPLOSIVE_GRENADE_COUNT,
+            "smokes": SMOKE_GRENADE_COUNT,
+            "smoke_refill": SMOKE_REFILL_TIME,
             "last_dir": pygame.Vector2(-1, 0),
             "cooldown": 0.0,
         },
@@ -273,7 +281,8 @@ def main() -> None:
     walls = generate_random_walls(arena)
 
     bullets: list[dict[str, object]] = []
-    explosions: list[dict[str, object]] = []
+    smoke_clouds: list[dict[str, object]] = []
+    blast_effects: list[dict[str, object]] = []
     grenade_pickups: list[dict[str, object]] = []
     pickup_spawn_timer = random.uniform(GRENADE_PICKUP_MIN_SPAWN, GRENADE_PICKUP_MAX_SPAWN)
 
@@ -315,8 +324,8 @@ def main() -> None:
         p1_controller = controllers[0] if len(controllers) > 0 else None
         p2_controller = controllers[1] if len(controllers) > 1 else None
 
-        p1_cx, p1_cy, p1_run_btn, p1_fire_btn = get_controller_intent(p1_controller)
-        p2_cx, p2_cy, p2_run_btn, p2_fire_btn = get_controller_intent(p2_controller)
+        p1_cx, p1_cy, p1_run_btn, p1_bullet_btn, p1_grenade_btn, p1_smoke_btn = get_controller_intent(p1_controller)
+        p2_cx, p2_cy, p2_run_btn, p2_bullet_btn, p2_grenade_btn, p2_smoke_btn = get_controller_intent(p2_controller)
 
         p1_key_x = int(keys[pygame.K_d]) - int(keys[pygame.K_a])
         p1_key_y = int(keys[pygame.K_s]) - int(keys[pygame.K_w])
@@ -358,25 +367,27 @@ def main() -> None:
         players["p2"]["cooldown"] = max(0.0, float(players["p2"]["cooldown"]) - dt)
 
         for player_key in ("p1", "p2"):
-            player_grenades = int(players[player_key]["grenades"])
-            if player_grenades >= GRENADE_COUNT:
-                players[player_key]["grenade_refill"] = GRENADE_REFILL_TIME
+            player_smokes = int(players[player_key]["smokes"])
+            if player_smokes >= SMOKE_GRENADE_COUNT:
+                players[player_key]["smoke_refill"] = SMOKE_REFILL_TIME
                 continue
-            players[player_key]["grenade_refill"] = max(0.0, float(players[player_key]["grenade_refill"]) - dt)
-            if float(players[player_key]["grenade_refill"]) <= 0.0:
-                players[player_key]["grenades"] = min(GRENADE_COUNT, player_grenades + 1)
-                players[player_key]["grenade_refill"] = GRENADE_REFILL_TIME
+            players[player_key]["smoke_refill"] = max(0.0, float(players[player_key]["smoke_refill"]) - dt)
+            if float(players[player_key]["smoke_refill"]) <= 0.0:
+                players[player_key]["smokes"] = min(SMOKE_GRENADE_COUNT, player_smokes + 1)
+                players[player_key]["smoke_refill"] = SMOKE_REFILL_TIME
 
-        p1_fire = keys[pygame.K_SPACE] or p1_fire_btn
-        p2_fire = keys[pygame.K_RCTRL] or p2_fire_btn
+        p1_bullet_fire = keys[pygame.K_SPACE] or p1_bullet_btn
+        p1_grenade_fire = keys[pygame.K_q] or p1_grenade_btn
+        p1_smoke_fire = keys[pygame.K_e] or p1_smoke_btn
+        p2_bullet_fire = keys[pygame.K_RCTRL] or p2_bullet_btn
+        p2_grenade_fire = keys[pygame.K_PERIOD] or p2_grenade_btn
+        p2_smoke_fire = keys[pygame.K_COMMA] or p2_smoke_btn
 
-        if p1_fire and float(players["p1"]["cooldown"]) <= 0.0:
-            direction = players["p1"]["last_dir"]
-            origin = players["p1"]["rect"].center
-            has_grenade = int(players["p1"]["grenades"]) > 0
-            projectile_kind = "grenade" if has_grenade else "bullet"
-            projectile_size = GRENADE_SIZE if has_grenade else BULLET_SIZE
-            projectile_speed = GRENADE_SPEED if has_grenade else BULLET_SPEED
+        def spawn_projectile(player_key: str, projectile_kind: str) -> None:
+            direction = players[player_key]["last_dir"]
+            origin = players[player_key]["rect"].center
+            projectile_size = GRENADE_SIZE if projectile_kind in ("grenade", "smoke_grenade") else BULLET_SIZE
+            projectile_speed = GRENADE_SPEED if projectile_kind in ("grenade", "smoke_grenade") else BULLET_SPEED
             bullets.append(
                 {
                     "rect": pygame.Rect(
@@ -386,39 +397,32 @@ def main() -> None:
                         projectile_size,
                     ),
                     "vel": pygame.Vector2(direction.x, direction.y) * projectile_speed,
-                    "owner": "p1",
+                    "owner": player_key,
                     "kind": projectile_kind,
                     "distance": 0.0,
                 }
             )
-            players["p1"]["cooldown"] = SHOOT_COOLDOWN
-            if has_grenade:
+            players[player_key]["cooldown"] = SHOOT_COOLDOWN
+
+        if float(players["p1"]["cooldown"]) <= 0.0:
+            if p1_bullet_fire:
+                spawn_projectile("p1", "bullet")
+            elif p1_grenade_fire and int(players["p1"]["grenades"]) > 0:
+                spawn_projectile("p1", "grenade")
                 players["p1"]["grenades"] = int(players["p1"]["grenades"]) - 1
+            elif p1_smoke_fire and int(players["p1"]["smokes"]) > 0:
+                spawn_projectile("p1", "smoke_grenade")
+                players["p1"]["smokes"] = int(players["p1"]["smokes"]) - 1
 
-        if p2_fire and float(players["p2"]["cooldown"]) <= 0.0:
-            direction = players["p2"]["last_dir"]
-            origin = players["p2"]["rect"].center
-            has_grenade = int(players["p2"]["grenades"]) > 0
-            projectile_kind = "grenade" if has_grenade else "bullet"
-            projectile_size = GRENADE_SIZE if has_grenade else BULLET_SIZE
-            projectile_speed = GRENADE_SPEED if has_grenade else BULLET_SPEED
-            bullets.append(
-                {
-                    "rect": pygame.Rect(
-                        origin[0] - projectile_size // 2,
-                        origin[1] - projectile_size // 2,
-                        projectile_size,
-                        projectile_size,
-                    ),
-                    "vel": pygame.Vector2(direction.x, direction.y) * projectile_speed,
-                    "owner": "p2",
-                    "kind": projectile_kind,
-                    "distance": 0.0,
-                }
-            )
-            players["p2"]["cooldown"] = SHOOT_COOLDOWN
-            if has_grenade:
+        if float(players["p2"]["cooldown"]) <= 0.0:
+            if p2_bullet_fire:
+                spawn_projectile("p2", "bullet")
+            elif p2_grenade_fire and int(players["p2"]["grenades"]) > 0:
+                spawn_projectile("p2", "grenade")
                 players["p2"]["grenades"] = int(players["p2"]["grenades"]) - 1
+            elif p2_smoke_fire and int(players["p2"]["smokes"]) > 0:
+                spawn_projectile("p2", "smoke_grenade")
+                players["p2"]["smokes"] = int(players["p2"]["smokes"]) - 1
 
         kept_bullets: list[dict[str, object]] = []
         for bullet in bullets:
@@ -432,22 +436,30 @@ def main() -> None:
 
             hit_wall = any(bullet_rect.colliderect(wall) for wall in walls)
             out_of_bounds = not arena.colliderect(bullet_rect)
-            reached_max_range = kind == "grenade" and float(bullet["distance"]) >= grenade_max_range
+            reached_max_range = kind in ("grenade", "smoke_grenade") and float(bullet["distance"]) >= grenade_max_range
 
             owner = bullet["owner"]
             target = "p2" if owner == "p1" else "p1"
             hit_player = bullet_rect.colliderect(players[target]["rect"])
 
+            if kind == "smoke_grenade" and (hit_player or hit_wall or out_of_bounds or reached_max_range):
+                smoke_center = pygame.Vector2(bullet_rect.center)
+                smoke_clouds.append({"center": smoke_center, "ttl": SMOKE_AOE_DURATION})
+                continue
+
             if kind == "grenade" and (hit_player or hit_wall or out_of_bounds or reached_max_range):
-                explosion_center = pygame.Vector2(bullet_rect.center)
-                explosions.append({"center": explosion_center, "ttl": GRENADE_AOE_DURATION})
+                blast_center = pygame.Vector2(bullet_rect.center)
+                blast_effects.append({"center": blast_center, "ttl": EXPLOSIVE_GRENADE_AOE_DURATION})
+                for player_key in ("p1", "p2"):
+                    if rect_within_radius(players[player_key]["rect"], blast_center, EXPLOSIVE_GRENADE_AOE_RADIUS):
+                        players[player_key]["hp"] = max(0, int(players[player_key]["hp"]) - EXPLOSIVE_GRENADE_DAMAGE)
                 continue
 
             if kind == "bullet":
                 if hit_wall or out_of_bounds:
                     continue
                 target_hidden_in_smoke = any(
-                    rect_within_radius(players[target]["rect"], cloud["center"], GRENADE_AOE_RADIUS) for cloud in explosions
+                    rect_within_radius(players[target]["rect"], cloud["center"], SMOKE_AOE_RADIUS) for cloud in smoke_clouds
                 )
                 if target_hidden_in_smoke:
                     continue
@@ -459,12 +471,19 @@ def main() -> None:
 
         bullets = kept_bullets
 
-        kept_explosions: list[dict[str, object]] = []
-        for explosion in explosions:
-            explosion["ttl"] = float(explosion["ttl"]) - dt
-            if float(explosion["ttl"]) > 0:
-                kept_explosions.append(explosion)
-        explosions = kept_explosions
+        kept_smoke_clouds: list[dict[str, object]] = []
+        for smoke_cloud in smoke_clouds:
+            smoke_cloud["ttl"] = float(smoke_cloud["ttl"]) - dt
+            if float(smoke_cloud["ttl"]) > 0:
+                kept_smoke_clouds.append(smoke_cloud)
+        smoke_clouds = kept_smoke_clouds
+
+        kept_blast_effects: list[dict[str, object]] = []
+        for blast_effect in blast_effects:
+            blast_effect["ttl"] = float(blast_effect["ttl"]) - dt
+            if float(blast_effect["ttl"]) > 0:
+                kept_blast_effects.append(blast_effect)
+        blast_effects = kept_blast_effects
 
         pickup_spawn_timer -= dt
         if pickup_spawn_timer <= 0.0:
@@ -482,7 +501,7 @@ def main() -> None:
             picked = False
             for player_key in ("p1", "p2"):
                 if pickup["rect"].colliderect(players[player_key]["rect"]):
-                    players[player_key]["grenades"] = GRENADE_COUNT
+                    players[player_key]["grenades"] = EXPLOSIVE_GRENADE_COUNT
                     picked = True
                     break
 
@@ -500,7 +519,7 @@ def main() -> None:
             running = False
 
         hidden_players: dict[str, bool] = {
-            key: any(rect_within_radius(players[key]["rect"], cloud["center"], GRENADE_AOE_RADIUS) for cloud in explosions)
+            key: any(rect_within_radius(players[key]["rect"], cloud["center"], SMOKE_AOE_RADIUS) for cloud in smoke_clouds)
             for key in ("p1", "p2")
         }
 
@@ -515,28 +534,46 @@ def main() -> None:
             else:
                 pygame.draw.rect(screen, players[key]["color"], players[key]["rect"], border_radius=6)
         for bullet in bullets:
-            if bullet["kind"] == "grenade":
+            if bullet["kind"] in ("grenade", "smoke_grenade"):
                 draw_grenade_projectile(screen, bullet["rect"], bullet["vel"])
             else:
                 pygame.draw.rect(screen, BULLET_COLOR, bullet["rect"], border_radius=4)
 
-        for explosion in explosions:
-            alpha = int(130 * (float(explosion["ttl"]) / GRENADE_AOE_DURATION))
+        for smoke_cloud in smoke_clouds:
+            alpha = int(130 * (float(smoke_cloud["ttl"]) / SMOKE_AOE_DURATION))
             aoe_surface = pygame.Surface((arena.width, arena.height), pygame.SRCALPHA)
             pygame.draw.circle(
                 aoe_surface,
                 (110, 231, 183, max(0, min(145, alpha))),
-                (int(explosion["center"].x), int(explosion["center"].y)),
-                GRENADE_AOE_RADIUS,
+                (int(smoke_cloud["center"].x), int(smoke_cloud["center"].y)),
+                SMOKE_AOE_RADIUS,
             )
             pygame.draw.circle(
                 aoe_surface,
                 (52, 211, 153, max(0, min(190, alpha + 35))),
-                (int(explosion["center"].x), int(explosion["center"].y)),
-                GRENADE_AOE_RADIUS,
+                (int(smoke_cloud["center"].x), int(smoke_cloud["center"].y)),
+                SMOKE_AOE_RADIUS,
                 2,
             )
             screen.blit(aoe_surface, (0, 0))
+
+        for blast_effect in blast_effects:
+            alpha = int(170 * (float(blast_effect["ttl"]) / EXPLOSIVE_GRENADE_AOE_DURATION))
+            blast_surface = pygame.Surface((arena.width, arena.height), pygame.SRCALPHA)
+            pygame.draw.circle(
+                blast_surface,
+                (255, 90, 90, max(0, min(170, alpha))),
+                (int(blast_effect["center"].x), int(blast_effect["center"].y)),
+                EXPLOSIVE_GRENADE_AOE_RADIUS,
+            )
+            pygame.draw.circle(
+                blast_surface,
+                (255, 170, 120, max(0, min(210, alpha + 35))),
+                (int(blast_effect["center"].x), int(blast_effect["center"].y)),
+                EXPLOSIVE_GRENADE_AOE_RADIUS,
+                2,
+            )
+            screen.blit(blast_surface, (0, 0))
 
         for pickup in grenade_pickups:
             pickup_rect = pickup["rect"]
@@ -549,23 +586,23 @@ def main() -> None:
 
         status_text = font.render(
             (
-                f"P1 HP: {players['p1']['hp']} G: {players['p1']['grenades']}    "
-                f"P2 HP: {players['p2']['hp']} G: {players['p2']['grenades']}    "
+                f"P1 HP: {players['p1']['hp']} G: {players['p1']['grenades']} S: {players['p1']['smokes']}    "
+                f"P2 HP: {players['p2']['hp']} G: {players['p2']['grenades']} S: {players['p2']['smokes']}    "
                 f"FPS: {clock.get_fps():.1f}"
             ),
             True,
             TEXT_COLOR,
         )
         controls_text = font.render(
-            "P1: WASD/Left Stick + Shift/LB run + Space/A fire (smoke first) | P2: Arrows/Stick + Shift/LB run + RCtrl/A fire",
+            "P1: Space bullet, Q grenade, E smoke | P2: RCtrl bullet, . grenade, , smoke",
             True,
             TEXT_COLOR,
         )
-        p1_refill_text = "Ready" if int(players["p1"]["grenades"]) >= GRENADE_COUNT else f"{float(players['p1']['grenade_refill']):.1f}s"
-        p2_refill_text = "Ready" if int(players["p2"]["grenades"]) >= GRENADE_COUNT else f"{float(players['p2']['grenade_refill']):.1f}s"
+        p1_refill_text = "Ready" if int(players["p1"]["smokes"]) >= SMOKE_GRENADE_COUNT else f"{float(players['p1']['smoke_refill']):.1f}s"
+        p2_refill_text = "Ready" if int(players["p2"]["smokes"]) >= SMOKE_GRENADE_COUNT else f"{float(players['p2']['smoke_refill']):.1f}s"
         smoke_text = font.render(
             (
-                f"Smoke refill: P1 {p1_refill_text} | P2 {p2_refill_text}  (Max {GRENADE_COUNT})"
+                f"Smoke refill: P1 {p1_refill_text} | P2 {p2_refill_text}  (Max {SMOKE_GRENADE_COUNT})"
             ),
             True,
             TEXT_COLOR,
@@ -573,7 +610,7 @@ def main() -> None:
         controller_text = font.render(
             (
                 f"Controllers: {len(controllers)} connected "
-                f"(P1: {'Yes' if p1_controller else 'No'} | P2: {'Yes' if p2_controller else 'No'}) | F11: fullscreen"
+                f"(P1: {'Yes' if p1_controller else 'No'} | P2: {'Yes' if p2_controller else 'No'}) | A bullet, B grenade, X smoke | F11"
             ),
             True,
             TEXT_COLOR,

@@ -24,11 +24,11 @@ BULLET_SIZE = 8
 GRENADE_SIZE = 22
 SHOOT_COOLDOWN = 0.2
 MAX_HP = 5
-GRENADE_COUNT = 3
-GRENADE_DAMAGE = 3
+GRENADE_COUNT = 2
+GRENADE_REFILL_TIME = 20.0
 BULLET_DAMAGE = 1
-GRENADE_AOE_RADIUS = 70
-GRENADE_AOE_DURATION = 0.18
+GRENADE_AOE_RADIUS = 145
+GRENADE_AOE_DURATION = 7.0
 GRENADE_PICKUP_SIZE = 20
 GRENADE_PICKUP_LIFETIME = 10.0
 GRENADE_PICKUP_MIN_SPAWN = 5.0
@@ -255,6 +255,7 @@ def main() -> None:
             "color": PLAYER1_COLOR,
             "hp": MAX_HP,
             "grenades": GRENADE_COUNT,
+            "grenade_refill": GRENADE_REFILL_TIME,
             "last_dir": pygame.Vector2(1, 0),
             "cooldown": 0.0,
         },
@@ -263,6 +264,7 @@ def main() -> None:
             "color": PLAYER2_COLOR,
             "hp": MAX_HP,
             "grenades": GRENADE_COUNT,
+            "grenade_refill": GRENADE_REFILL_TIME,
             "last_dir": pygame.Vector2(-1, 0),
             "cooldown": 0.0,
         },
@@ -355,6 +357,16 @@ def main() -> None:
         players["p1"]["cooldown"] = max(0.0, float(players["p1"]["cooldown"]) - dt)
         players["p2"]["cooldown"] = max(0.0, float(players["p2"]["cooldown"]) - dt)
 
+        for player_key in ("p1", "p2"):
+            player_grenades = int(players[player_key]["grenades"])
+            if player_grenades >= GRENADE_COUNT:
+                players[player_key]["grenade_refill"] = GRENADE_REFILL_TIME
+                continue
+            players[player_key]["grenade_refill"] = max(0.0, float(players[player_key]["grenade_refill"]) - dt)
+            if float(players[player_key]["grenade_refill"]) <= 0.0:
+                players[player_key]["grenades"] = min(GRENADE_COUNT, player_grenades + 1)
+                players[player_key]["grenade_refill"] = GRENADE_REFILL_TIME
+
         p1_fire = keys[pygame.K_SPACE] or p1_fire_btn
         p2_fire = keys[pygame.K_RCTRL] or p2_fire_btn
 
@@ -426,17 +438,18 @@ def main() -> None:
             target = "p2" if owner == "p1" else "p1"
             hit_player = bullet_rect.colliderect(players[target]["rect"])
 
-            if kind == "grenade" and (hit_player or out_of_bounds or reached_max_range):
+            if kind == "grenade" and (hit_player or hit_wall or out_of_bounds or reached_max_range):
                 explosion_center = pygame.Vector2(bullet_rect.center)
                 explosions.append({"center": explosion_center, "ttl": GRENADE_AOE_DURATION})
-
-                for player_key in ("p1", "p2"):
-                    if rect_within_radius(players[player_key]["rect"], explosion_center, GRENADE_AOE_RADIUS):
-                        players[player_key]["hp"] = max(0, int(players[player_key]["hp"]) - GRENADE_DAMAGE)
                 continue
 
             if kind == "bullet":
                 if hit_wall or out_of_bounds:
+                    continue
+                target_hidden_in_smoke = any(
+                    rect_within_radius(players[target]["rect"], cloud["center"], GRENADE_AOE_RADIUS) for cloud in explosions
+                )
+                if target_hidden_in_smoke:
                     continue
                 if hit_player:
                     players[target]["hp"] = max(0, int(players[target]["hp"]) - BULLET_DAMAGE)
@@ -486,10 +499,17 @@ def main() -> None:
         if winner is not None:
             running = False
 
+        hidden_players: dict[str, bool] = {
+            key: any(rect_within_radius(players[key]["rect"], cloud["center"], GRENADE_AOE_RADIUS) for cloud in explosions)
+            for key in ("p1", "p2")
+        }
+
         screen.fill(BG_COLOR)
         for wall in walls:
             pygame.draw.rect(screen, WALL_COLOR, wall, border_radius=4)
         for key in ("p1", "p2"):
+            if hidden_players[key]:
+                continue
             if player_sprite is not None:
                 draw_player_sprite(screen, player_sprite, players[key]["rect"], players[key]["last_dir"])
             else:
@@ -505,13 +525,13 @@ def main() -> None:
             aoe_surface = pygame.Surface((arena.width, arena.height), pygame.SRCALPHA)
             pygame.draw.circle(
                 aoe_surface,
-                (255, 0, 0, max(0, min(130, alpha))),
+                (110, 231, 183, max(0, min(145, alpha))),
                 (int(explosion["center"].x), int(explosion["center"].y)),
                 GRENADE_AOE_RADIUS,
             )
             pygame.draw.circle(
                 aoe_surface,
-                (255, 90, 90, max(0, min(180, alpha + 30))),
+                (52, 211, 153, max(0, min(190, alpha + 35))),
                 (int(explosion["center"].x), int(explosion["center"].y)),
                 GRENADE_AOE_RADIUS,
                 2,
@@ -537,7 +557,16 @@ def main() -> None:
             TEXT_COLOR,
         )
         controls_text = font.render(
-            "P1: WASD/Left Stick + Shift/LB run + Space/A fire | P2: Arrows/Stick + Shift/LB run + RCtrl/A fire",
+            "P1: WASD/Left Stick + Shift/LB run + Space/A fire (smoke first) | P2: Arrows/Stick + Shift/LB run + RCtrl/A fire",
+            True,
+            TEXT_COLOR,
+        )
+        p1_refill_text = "Ready" if int(players["p1"]["grenades"]) >= GRENADE_COUNT else f"{float(players['p1']['grenade_refill']):.1f}s"
+        p2_refill_text = "Ready" if int(players["p2"]["grenades"]) >= GRENADE_COUNT else f"{float(players['p2']['grenade_refill']):.1f}s"
+        smoke_text = font.render(
+            (
+                f"Smoke refill: P1 {p1_refill_text} | P2 {p2_refill_text}  (Max {GRENADE_COUNT})"
+            ),
             True,
             TEXT_COLOR,
         )
@@ -551,7 +580,8 @@ def main() -> None:
         )
         screen.blit(status_text, (12, 10))
         screen.blit(controls_text, (12, 34))
-        screen.blit(controller_text, (12, 58))
+        screen.blit(smoke_text, (12, 58))
+        screen.blit(controller_text, (12, 82))
 
         pygame.display.flip()
 

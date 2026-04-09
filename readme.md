@@ -26,11 +26,11 @@ python main.py
 
 - Player 1 move: W A S D
 - Player 1 run: Left Shift (no stamina limit)
-- Player 1 fire: Space (first 3 shots are grenades)
+- Player 1 fire: Space (first 2 shots are smoke grenades)
 - Player 1 controller: Left Stick or D-pad move, LB/RB run, A/B/X/Y fire
 - Player 2 move: Arrow keys
 - Player 2 run: Right Shift (no stamina limit)
-- Player 2 fire: Right Ctrl (first 3 shots are grenades)
+- Player 2 fire: Right Ctrl (first 2 shots are smoke grenades)
 - Player 2 controller: Left Stick or D-pad move, LB/RB run, A/B/X/Y fire
 - Exit anytime: Esc
 - Quit: close the window
@@ -39,8 +39,9 @@ python main.py
 
 - The map has walls that block movement and bullets.
 - Each player starts with 5 HP.
-- Each player has exactly 3 slow grenades, then continues with regular bullets.
-- Grenades explode in an AOE circle and deal 3 damage to any player inside the blast radius.
+- Each player starts with 2 smoke grenades and they auto-refill (1 charge every 20 seconds, up to 2).
+- Smoke grenades create a large AOE cloud where players can hide.
+- Hidden players cannot be seen and cannot be hit by direct bullets while inside smoke.
 - First player to reduce the opponent to 0 HP wins.
 
 ## Project files

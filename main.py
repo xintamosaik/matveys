@@ -442,12 +442,12 @@ def main() -> None:
             target = "p2" if owner == "p1" else "p1"
             hit_player = bullet_rect.colliderect(players[target]["rect"])
 
-            if kind == "smoke_grenade" and (hit_player or hit_wall or out_of_bounds or reached_max_range):
+            if kind == "smoke_grenade" and (hit_player or out_of_bounds or reached_max_range):
                 smoke_center = pygame.Vector2(bullet_rect.center)
                 smoke_clouds.append({"center": smoke_center, "ttl": SMOKE_AOE_DURATION})
                 continue
 
-            if kind == "grenade" and (hit_player or hit_wall or out_of_bounds or reached_max_range):
+            if kind == "grenade" and (hit_player or out_of_bounds or reached_max_range):
                 blast_center = pygame.Vector2(bullet_rect.center)
                 blast_effects.append({"center": blast_center, "ttl": EXPLOSIVE_GRENADE_AOE_DURATION})
                 for player_key in ("p1", "p2"):
